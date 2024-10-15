@@ -4,8 +4,8 @@ from email.header import decode_header
 from datetime import datetime
 
 # Your email and app password
-username = "muhammadarshadra2@gmail.com"
-password = "kklg hkou kcbo rrvd"
+username = "jayanthidress@gmail.com"
+password = "kqbv nxgy bgok fovc"
 
 def clean_text(text):
     return "".join(filter(lambda x: x.isprintable(), text))
