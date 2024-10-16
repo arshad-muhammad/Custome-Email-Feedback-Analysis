@@ -230,11 +230,11 @@ def get_unread_emails():
         
         df = pd.DataFrame(extracted_data)
         df.to_excel(excel_file_path, index=False)
-        print(f"Extracted details have been saved to '{excel_file_path}'.")
+        print(f"Extracted details has been saved to '{excel_file_path}'.")
 
         # Send summary email with the collected data
         send_summary_email(extracted_data, pd.Series(sentiment_scores))
 
 
-# Call the function to get unread emails and extract feedback
+# Call the functions to get unread emails and extract feedback
 get_unread_emails()

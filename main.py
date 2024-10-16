@@ -186,7 +186,7 @@ def get_unread_emails():
         save_dir = os.path.expanduser("~/Documents/customer-feedback-analysis")
         os.makedirs(save_dir, exist_ok=True)  # Create the directory if it doesn't exist
 
-        # Path for the Excel file
+        # Path for the Excel files
         excel_file_path = os.path.join(save_dir, "extracted_feedback.xlsx")
         
         # Create a DataFrame and save it to Excel
