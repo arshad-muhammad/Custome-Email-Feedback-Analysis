@@ -13,16 +13,17 @@ from io import BytesIO
 vader_analyzer = SentimentIntensityAnalyzer()
 
 # Email account credentials
-EMAIL = 'jayanthidress@gmail.com'
-PASSWORD = 'kqbv nxgy bgok fovc'
-SERVICE_EMAIL = 'muhd.arshad@gmail.com'
+EMAIL = 'email'
+PASSWORD = 'your_app_pass'
+SERVICE_EMAIL = 'your_email'
 
 
 def extract_feedback(email_body):
-    feedback_pattern = re.compile(r"(feedback|review|suggestion|comment)", re.IGNORECASE)
+    feedback_pattern = re.compile(r"(feedback|review|suggestion|comment|dress)", re.IGNORECASE)
     if feedback_pattern.search(email_body):
         return email_body.strip()  # Clean and return the feedback
-    return "No feedback found."
+    else:
+        return "No feedback found."
 
 
 def extract_customer_name(email_body):

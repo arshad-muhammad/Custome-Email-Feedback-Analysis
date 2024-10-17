@@ -11,16 +11,17 @@ import os
 vader_analyzer = SentimentIntensityAnalyzer()
 
 # Email account credentials
-EMAIL = 'jayanthidress@gmail.com'
-PASSWORD = 'kqbv nxgy bgok fovc'
+EMAIL = 'email'
+PASSWORD = 'app pass'
 
 
 def extract_feedback(email_body):
     # Regex to find feedback or relevant keywords
-    feedback_pattern = re.compile(r"(feedback|review|suggestion|comment)", re.IGNORECASE)
+    feedback_pattern = re.compile(r"(feedback|review|suggestion|comment|dress)", re.IGNORECASE)
     if feedback_pattern.search(email_body):
         return email_body.strip()  # Clean and return the feedback
-    return "No feedback found."
+    else:
+         return "No feedback found."
 
 
 def extract_customer_name(email_body):
@@ -38,8 +39,8 @@ def extract_customer_name(email_body):
         match = re.search(pattern, email_body, re.IGNORECASE)
         if match:
             return match.group(1).strip()
-
-    return "Not available"  # Default if no name is found
+        else:
+            return "Not available"  # Default if no name is found
 
 
 def extract_order_id(email_body):
@@ -55,8 +56,8 @@ def extract_order_id(email_body):
         match = re.search(pattern, email_body, re.IGNORECASE)
         if match:
             return match.group(1).strip()
-
-    return "Not available"  # Default if no order ID is found
+        else:
+          return "Not available"  # Default if no order ID is found
 
 
 def analyze_sentiment(feedback):
