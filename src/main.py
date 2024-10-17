@@ -13,9 +13,9 @@ from io import BytesIO
 vader_analyzer = SentimentIntensityAnalyzer()
 
 # Email account credentials
-EMAIL = 'email'
-PASSWORD = 'your_app_pass'
-SERVICE_EMAIL = 'your_email'
+EMAIL = 'jayanthidress@gmail.com'
+PASSWORD = 'kqbv nxgy bgok fovc'
+SERVICE_EMAIL = 'muhd.arshad@gmail.com'
 
 
 def extract_feedback(email_body):

@@ -1,5 +1,0 @@
-nltk==3.6.2
-pyyaml==5.4.1
-pandas
-matplotlib
-openpyxl
