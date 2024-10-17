@@ -11,7 +11,7 @@ username = "jayanthidress@gmail.com"
 password = "kqbv nxgy bgok fovc"
 
 # Compile feedback pattern once (cached)
-feedback_pattern = re.compile(r"(feedback|review|suggestion|comment|jayanthidress|dress)", re.IGNORECASE)
+feedback_pattern = re.compile(r"(feedback|review|suggestion|comment|jayanthidress|dress|dresses)", re.IGNORECASE)
 
 def clean_text(text):
     return "".join(filter(lambda x: x.isprintable(), text))
