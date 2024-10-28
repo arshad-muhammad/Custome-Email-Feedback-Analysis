@@ -1,245 +1,249 @@
 import imaplib
 import email
 from email.header import decode_header
+from email.message import EmailMessage
+from email.utils import parsedate_to_datetime
+from nltk.sentiment import SentimentIntensityAnalyzer
 import re
-
-# Your email and app password
-username = "muhammadarshadra2@gmail.com"
-password = "kklg hkou kcbo rrvd"
-
-def clean_text(text):
-    # Remove unwanted characters and decode
-    return "".join(filter(lambda x: x.isprintable(), text))
-
-def extract_feedback(email_body):
-    # Regex to find feedback or relevant keywords
-    feedback_pattern = re.compile(r"(feedback|review|suggestion|comment)", re.IGNORECASE)
-    if feedback_pattern.search(email_body):
-        return email_body.strip()  # Clean and return the feedback
-    return "No feedback found."
-
-def get_emails():
-    # Connect to the Gmail IMAP server
-    imap = imaplib.IMAP4_SSL("imap.gmail.com")
-    
-    # Login to the account
-    imap.login(username, password)
-
-    # Select the mailbox you want to extract emails from
-    imap.select("inbox")
-
-    # Search for all emails
-    status, messages = imap.search(None, "ALL")
-    email_ids = messages[0].split()
-
-    # Process the latest email
-    latest_email_id = email_ids[-1]
-
-    # Fetch the email by ID
-    res, msg = imap.fetch(latest_email_id, "(RFC822)")
-
-    for response_part in msg:
-        if isinstance(response_part, tuple):
-            # Parse the email content
-            msg = email.message_from_bytes(response_part[1])
-            subject, encoding = decode_header(msg["Subject"])[0]
-
-            if isinstance(subject, bytes):
-                # Decode the subject if it's in bytes
-                subject = subject.decode(encoding if encoding else "utf-8")
-
-            # Extract the email sender
-            from_ = msg.get("From")
-
-            # If the email message is multipart
-            if msg.is_multipart():
-                for part in msg.walk():
-                    content_type = part.get_content_type()
-                    content_disposition = str(part.get("Content-Disposition"))
-
-                    # Get the body of the email
-                    if "attachment" not in content_disposition:
-                        if content_type == "text/plain":
-                            email_body = part.get_payload(decode=True).decode()
-
-                            # Clean the email body and extract feedback
-                            cleaned_body = clean_text(email_body)
-                            feedback = extract_feedback(cleaned_body)
-                            print(f"Subject: {subject}")
-                            print(f"From: {from_}")
-                            print(f"Feedback Extracted: {feedback}")
-
-            else:
-                # If not multipart, process plain text email
-                content_type = msg.get_content_type()
-                if content_type == "text/plain":
-                    email_body = msg.get_payload(decode=True).decode()
-                    cleaned_body = clean_text(email_body)
-                    feedback = extract_feedback(cleaned_body)
-                    print(f"Subject: {subject}")
-                    print(f"From: {from_}")
-                    print(f"Feedback Extracted: {feedback}")
-
-    # Close the connection and logout
-
-
-
-/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-
-
-
-
-    import imaplib
-import email
-from email.header import decode_header
+import pandas as pd
+import os
+import matplotlib.pyplot as plt
+from io import BytesIO
+import smtplib
+from dataclasses import dataclass
+from typing import List, Optional
 from datetime import datetime
-from textblob import TextBlob  # Import TextBlob for sentiment analysis
-import re
-from concurrent.futures import ThreadPoolExecutor
 
-# Your email and app password
-username = "jayanthidress@gmail.com"
-password = "kqbv nxgy bgok fovc"
+@dataclass
+class EmailConfig:
+    """Email configuration settings"""
+    email: str
+    password: str
+    service_email: str
+    imap_server: str = 'imap.gmail.com'
+    smtp_server: str = 'smtp.gmail.com'
+    smtp_port: int = 587
 
-# Compile feedback pattern once (cached)
-feedback_pattern = re.compile(r"(feedback|review|suggestion|comment|jayanthidress|dress)", re.IGNORECASE)
+@dataclass
+class FeedbackData:
+    """Structure for storing extracted feedback data"""
+    email_from: str
+    subject: str
+    date: str
+    customer_name: str
+    order_id: str
+    feedback: str
+    sentiment: str
 
-def clean_text(text):
-    return "".join(filter(lambda x: x.isprintable(), text))
-
-def extract_feedback(email_body):
-    if feedback_pattern.search(email_body):
-        return email_body.strip()  # Clean and return the feedback
-    return None  # Return None if no feedback is found
-
-def format_email_date(email_date):
-    # Parse the date into a datetime object
-    date_obj = email.utils.parsedate_to_datetime(email_date)
-    # Format the date into dd/mm/yyyy
-    return date_obj.strftime("%d/%m/%Y")
-
-def decode_payload(part):
-    try:
-        payload = part.get_payload(decode=True)
-        if isinstance(payload, bytes):
-            for encoding in ['utf-8', 'ISO-8859-1', 'latin1']:
-                try:
-                    return payload.decode(encoding)
-                except UnicodeDecodeError:
-                    continue
-        return str(payload)
-    except Exception as e:
-        return ""
-
-def analyze_sentiment(feedback):
-    # Analyze feedback sentiment using TextBlob
-    analysis = TextBlob(feedback)
-    polarity = analysis.sentiment.polarity  # Get polarity score: -1 (negative) to +1 (positive)
+class FeedbackAnalyzer:
+    """Main class for analyzing customer feedback from emails"""
     
-    if polarity > 0:
-        return "Positive"
-    elif polarity < 0:
-        return "Negative"
-    else:
-        return "Neutral"
+    def __init__(self, config: EmailConfig):
+        self.config = config
+        self.vader_analyzer = SentimentIntensityAnalyzer()
+        self.feedback_pattern = re.compile(r"(feedback|review|suggestion|comment|dress)", re.IGNORECASE)
+        self.name_patterns = [
+            r"my name is\s+([A-Za-z]+)",
+            r"i'?m\s+([A-Za-z]+)",
+            r"this is\s+([A-Za-z]+)",
+            r"here'?s\s+([A-Za-z]+)",
+            r"\bi am\s+([A-Za-z]+)"
+        ]
+        self.order_patterns = [
+            r"order id is\s*([A-Za-z0-9\-]+)",
+            r"my order id\s*[:\s]*([A-Za-z0-9\-]+)",
+            r"order #?\s*([A-Za-z0-9\-]+)",
+            r"order number\s*[:\s]*([A-Za-z0-9\-]+)"
+        ]
 
-def process_email(email_data):
-    # Parse the email content
-    msg = email.message_from_bytes(email_data)
-    subject, encoding = decode_header(msg["Subject"])[0]
+    def extract_feedback(self, email_body: str) -> str:
+        """Extract feedback from email body"""
+        if self.feedback_pattern.search(email_body):
+            return email_body.strip()
+        return "No feedback found."
 
-    if isinstance(subject, bytes):
-        subject = subject.decode(encoding if encoding else "utf-8")
+    def extract_customer_name(self, email_body: str) -> str:
+        """Extract customer name from email body"""
+        for pattern in self.name_patterns:
+            if match := re.search(pattern, email_body, re.IGNORECASE):
+                return match.group(1).strip()
+        return "Not available"
 
-    from_ = msg.get("From")
-    date_ = msg.get("Date")
+    def extract_order_id(self, email_body: str) -> str:
+        """Extract order ID from email body"""
+        for pattern in self.order_patterns:
+            if match := re.search(pattern, email_body, re.IGNORECASE):
+                return match.group(1).strip()
+        return "Not available"
 
-    # If the email message is multipart
-    if msg.is_multipart():
-        for part in msg.walk():
-            content_type = part.get_content_type()
-            content_disposition = str(part.get("Content-Disposition"))
+    def analyze_sentiment(self, feedback: str) -> str:
+        """Analyze sentiment of feedback text"""
+        vader_scores = self.vader_analyzer.polarity_scores(feedback)
+        compound_score = vader_scores['compound']
 
-            # Get the body of the email
-            if "attachment" not in content_disposition and content_type == "text/plain":
-                email_body = decode_payload(part)
-                cleaned_body = clean_text(email_body)
-                feedback = extract_feedback(cleaned_body)
+        negative_keywords = {'terrible', 'awful', 'bad', 'worst', 'horrible', 'poor', 'disappointed', 'hate'}
+        positive_keywords = {'excellent', 'great', 'amazing', 'fantastic', 'good', 'wonderful', 'love', 'best'}
 
-                if feedback:  # Only process if feedback is found
-                    formatted_date = format_email_date(date_)
-                    sentiment = analyze_sentiment(feedback)  # Perform sentiment analysis
-                    print(f"From: {from_}")
-                    print(f"Subject: {subject}")
-                    print(f"Date: {formatted_date}")
-                    print(f"Feedback Extracted: {feedback}")
-                    print(f"Sentiment: {sentiment}\n")
+        feedback_lower = feedback.lower()
+        if any(word in feedback_lower for word in negative_keywords):
+            return "Negative"
+        if any(word in feedback_lower for word in positive_keywords):
+            return "Positive"
 
-    else:
-        # If the email isn't multipart (simple plain text)
-        email_body = decode_payload(msg)
-        cleaned_body = clean_text(email_body)
-        feedback = extract_feedback(cleaned_body)
+        return "Positive" if compound_score >= 0.3 else "Negative" if compound_score <= -0.3 else "Neutral"
 
-        if feedback:  # Only process if feedback is found
-            formatted_date = format_email_date(date_)
-            sentiment = analyze_sentiment(feedback)  # Perform sentiment analysis
-            print(f"From: {from_}")
-            print(f"Subject: {subject}")
-            print(f"Date: {formatted_date}")
-            print(f"Feedback Extracted: {feedback}")
-            print(f"Sentiment: {sentiment}\n")
+    def create_sentiment_chart(self, sentiment_data: pd.Series) -> BytesIO:
+        """Create a chart visualizing sentiment distribution"""
+        plt.figure(figsize=(8, 6))
+        sentiment_counts = sentiment_data.value_counts()
+        colors = {'Positive': 'green', 'Negative': 'red', 'Neutral': 'grey'}
+        sentiment_counts.plot(kind='bar', color=[colors[x] for x in sentiment_counts.index])
+        plt.title('Sentiment Analysis Summary')
+        plt.xlabel('Sentiment')
+        plt.ylabel('Count')
+        plt.xticks(rotation=0)
+        plt.tight_layout()
 
-def get_unread_emails():
-    # Connect to Gmail's IMAP server
-    imap = imaplib.IMAP4_SSL("imap.gmail.com")
+        img_buffer = BytesIO()
+        plt.savefig(img_buffer, format='png')
+        img_buffer.seek(0)
+        plt.close()
+        return img_buffer
 
-    # Login to the account
-    imap.login(username, password)
+    def send_summary_email(self, feedback_data: List[FeedbackData], sentiment_scores: pd.Series):
+        """Send summary email with feedback analysis"""
+        msg = EmailMessage()
+        msg['From'] = self.config.email
+        msg['To'] = self.config.service_email
+        msg['Subject'] = "Customer Feedback Summary"
 
-    # Select the mailbox you want to read (inbox)
-    imap.select("inbox")
+        body = "Customer Feedback Summary Report\n\n"
+        for data in feedback_data:
+            body += (f"From: {data.email_from}\n"
+                    f"Subject: {data.subject}\n"
+                    f"Date: {data.date}\n"
+                    f"Customer Name: {data.customer_name}\n"
+                    f"Order ID: {data.order_id}\n"
+                    f"Feedback: {data.feedback}\n"
+                    f"Sentiment: {data.sentiment}\n"
+                    f"{'='*50}\n")
 
-    # Search for all unread emails
-    status, messages = imap.search(None, "UNSEEN")
+        msg.set_content(body)
 
-    # Get the list of email IDs (unread emails)
-    email_ids = messages[0].split()
+        # Add sentiment chart
+        chart_data = self.create_sentiment_chart(sentiment_scores)
+        msg.add_attachment(chart_data.read(), maintype='image', 
+                         subtype='png', filename='sentiment_summary.png')
 
-    if not email_ids:
-        print("No new emails found.")
-        return
+        with smtplib.SMTP(self.config.smtp_server, self.config.smtp_port) as server:
+            server.starttls()
+            server.login(self.config.email, self.config.password)
+            server.send_message(msg)
 
-    # Decode email IDs from bytes to strings
-    email_ids = [email_id.decode() for email_id in email_ids]
+    def save_feedback_data(self, feedback_data: List[FeedbackData]):
+        """Save feedback data to Excel file"""
+        save_dir = os.path.expanduser("~/Documents/customer-feedback-analysis")
+        os.makedirs(save_dir, exist_ok=True)
+        file_path = os.path.join(save_dir, "extracted_feedback.xlsx")
 
-    # Process emails in batches (fetch all in one go)
-    max_emails_to_fetch = 50  # Adjust as necessary
-    email_ids = email_ids[:max_emails_to_fetch]
+        df = pd.DataFrame([vars(data) for data in feedback_data])
+        df.to_excel(file_path, index=False)
+        print(f"Feedback data saved to '{file_path}'")
+
+    def process_email_body(self, msg) -> Optional[str]:
+        """Extract and decode email body"""
+        if msg.is_multipart():
+            for part in msg.walk():
+                if part.get_content_type() == "text/plain":
+                    try:
+                        return part.get_payload(decode=True).decode()
+                    except UnicodeDecodeError:
+                        return part.get_payload(decode=True).decode('latin-1')
+        else:
+            return msg.get_payload(decode=True).decode()
+        return None
+
+    def process_emails(self):
+        """Main method to process unread emails and extract feedback"""
+        with imaplib.IMAP4_SSL(self.config.imap_server) as imap:
+            imap.login(self.config.email, self.config.password)
+            imap.select("inbox")
+            
+            _, messages = imap.search(None, 'UNSEEN')
+            email_ids = messages[0].split()
+
+            if not email_ids:
+                print("No new emails found.")
+                return
+
+            print(f"Processing {len(email_ids)} new email(s)...")
+            
+            feedback_data = []
+            sentiment_scores = []
+
+            for email_id in email_ids:
+                _, msg_data = imap.fetch(email_id, "(RFC822)")
+                
+                for response_part in msg_data:
+                    if not isinstance(response_part, tuple):
+                        continue
+
+                    msg = email.message_from_bytes(response_part[1])
+                    
+                    # Extract email metadata
+                    subject = decode_header(msg["Subject"])[0][0]
+                    subject = subject.decode() if isinstance(subject, bytes) else subject
+                    
+                    sender = decode_header(msg.get("From"))[0][0]
+                    sender = sender.decode() if isinstance(sender, bytes) else sender
+                    
+                    date = parsedate_to_datetime(msg["Date"])
+                    formatted_date = date.strftime("%d/%m/%Y")
+
+                    # Process email body
+                    if email_body := self.process_email_body(msg):
+                        feedback = self.extract_feedback(email_body)
+                        customer_name = self.extract_customer_name(email_body)
+                        order_id = self.extract_order_id(email_body)
+
+                        if (feedback != "No feedback found." and 
+                            customer_name != "Not available" and 
+                            order_id != "Not available"):
+                            
+                            sentiment = self.analyze_sentiment(feedback)
+                            sentiment_scores.append(sentiment)
+
+                            feedback_data.append(FeedbackData(
+                                email_from=sender,
+                                subject=subject,
+                                date=formatted_date,
+                                customer_name=customer_name,
+                                order_id=order_id,
+                                feedback=feedback,
+                                sentiment=sentiment
+                            ))
+
+                            print(f"Processed feedback from {sender}")
+                        else:
+                            print(f"Incomplete feedback data in email from {sender}")
+
+            if feedback_data:
+                self.save_feedback_data(feedback_data)
+                self.send_summary_email(feedback_data, pd.Series(sentiment_scores))
+                print("Analysis complete. Summary email sent.")
+            else:
+                print("No valid feedback found in the processed emails.")
+
+def main():
+    """Main entry point of the script"""
+    config = EmailConfig(
+        email='jayanthidress@gmail.com',
+        password='kqbv nxgy bgok fovc',
+        service_email='muhd.arshad@gmail.com'
+    )
     
-    # Fetch all emails in a single request
-    res, msgs = imap.fetch(",".join(email_ids), "(RFC822)")
-
-    # Each response from the fetch can contain multiple parts, so loop through each one
-    for i in range(0, len(msgs), 2):
-        response = msgs[i]
-        if isinstance(response, tuple):
-            email_data = response[1]
-            process_email(email_data)  # Process each email individually
-
-    # Mark the emails as read by adding the \Seen flag to all processed emails
-    imap.store(",".join(email_ids), '+FLAGS', '\Seen')
-
-    # Close the connection and logout
-    imap.close()
-    imap.logout()
+    analyzer = FeedbackAnalyzer(config)
+    analyzer.process_emails()
 
 if __name__ == "__main__":
-    get_unread_emails()
-
-    imap.close()
-    imap.logout()
-
-if __name__ == "__main__":
-    get_emails()
+    main()
